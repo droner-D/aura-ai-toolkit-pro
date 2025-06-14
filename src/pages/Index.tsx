@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,7 @@ import SocialMediaGenerator from '@/components/SocialMediaGenerator';
 import CommentGenerator from '@/components/CommentGenerator';
 
 const Index = () => {
-  const [activetool, setActiveTools] = useState<string | null>(null);
+  const [activeTools, setActiveTools] = useState<string | null>(null);
 
   const tools = [
     {
