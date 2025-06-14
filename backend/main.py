@@ -9,6 +9,9 @@ import openai
 from youtube_transcript_api import YouTubeTranscriptApi
 from pytube import YouTube
 import re
+import requests
+import base64
+import json
 
 # Load environment variables
 load_dotenv()
@@ -51,6 +54,25 @@ class CommentRequest(BaseModel):
     platform: str
     tone: str
     custom_instructions: Optional[str] = None
+
+class JiraGenerateRequest(BaseModel):
+    subject: str
+    rough_description: str
+    ticket_type: str
+    priority: str = "Medium"
+
+class JiraSettings(BaseModel):
+    jira_url: str
+    username: str
+    api_token: str
+    project_key: str
+
+class JiraCreateRequest(BaseModel):
+    subject: str
+    content: str
+    ticket_type: str
+    priority: str
+    jira_settings: JiraSettings
 
 @app.get("/")
 def read_root():
@@ -135,6 +157,44 @@ async def generate_comment(request: CommentRequest):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/jira/generate")
+async def generate_jira_content(request: JiraGenerateRequest):
+    try:
+        # Generate Jira ticket content
+        result = generate_jira_ticket_content(
+            request.subject,
+            request.rough_description,
+            request.ticket_type,
+            request.priority
+        )
+        
+        return {
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/jira/create")
+async def create_jira_ticket(request: JiraCreateRequest):
+    try:
+        # Create Jira ticket
+        ticket_url = create_jira_ticket_in_instance(
+            request.subject,
+            request.content,
+            request.ticket_type,
+            request.priority,
+            request.jira_settings
+        )
+        
+        return {
+            "ticket_url": ticket_url,
+            "message": "Jira ticket created successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ... keep existing code (helper functions for YouTube, social media, etc.)
 
 def extract_youtube_id(url: str) -> str:
     """Extract the YouTube video ID from a URL."""
@@ -280,6 +340,117 @@ def generate_comment_for_content(content: str, platform: str, tone: str, custom_
     
     # Return the generated comment
     return response.choices[0].message.content
+
+def generate_jira_ticket_content(subject: str, rough_description: str, ticket_type: str, priority: str) -> str:
+    """Generate professional Jira ticket content using OpenAI API."""
+    
+    # Create ticket type specific prompts
+    ticket_prompts = {
+        "epic": "Create a comprehensive Epic description that includes business value, scope, and acceptance criteria",
+        "story": "Create a detailed User Story following the format: 'As a [user], I want [goal] so that [benefit]', include acceptance criteria and definition of done",
+        "task": "Create a clear Task description with specific steps, requirements, and deliverables",
+        "bug": "Create a detailed Bug report with steps to reproduce, expected vs actual behavior, and environment details",
+        "improvement": "Create an Improvement description explaining the current state, proposed enhancement, and expected benefits",
+        "feature": "Create a Feature description with user requirements, functional specifications, and acceptance criteria"
+    }
+    
+    ticket_prompt = ticket_prompts.get(ticket_type, ticket_prompts["task"])
+    
+    prompt = f"""
+    {ticket_prompt} for a Jira ticket.
+    
+    Subject: {subject}
+    Priority: {priority}
+    Rough Description: {rough_description}
+    
+    Format the response professionally with clear sections and use markdown formatting where appropriate.
+    Include relevant sections like:
+    - Description/Summary
+    - Acceptance Criteria (where applicable)
+    - Steps to Reproduce (for bugs)
+    - Requirements
+    - Notes/Additional Information
+    
+    Make it comprehensive but concise, suitable for a development team.
+    """
+    
+    # Call OpenAI API
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are an expert at creating professional Jira tickets and project management documentation."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=1200,
+        temperature=0.7
+    )
+    
+    return response.choices[0].message.content
+
+def create_jira_ticket_in_instance(subject: str, content: str, ticket_type: str, priority: str, jira_settings: JiraSettings) -> str:
+    """Create a Jira ticket in the specified Jira instance."""
+    
+    # Map ticket types to Jira issue types
+    jira_issue_types = {
+        "epic": "Epic",
+        "story": "Story",
+        "task": "Task",
+        "bug": "Bug",
+        "improvement": "Improvement",
+        "feature": "New Feature"
+    }
+    
+    issue_type = jira_issue_types.get(ticket_type, "Task")
+    
+    # Prepare authentication
+    auth_string = f"{jira_settings.username}:{jira_settings.api_token}"
+    auth_bytes = auth_string.encode('ascii')
+    auth_b64 = base64.b64encode(auth_bytes).decode('ascii')
+    
+    # Prepare headers
+    headers = {
+        'Authorization': f'Basic {auth_b64}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+    
+    # Prepare the issue data
+    issue_data = {
+        "fields": {
+            "project": {
+                "key": jira_settings.project_key
+            },
+            "summary": subject,
+            "description": content,
+            "issuetype": {
+                "name": issue_type
+            },
+            "priority": {
+                "name": priority
+            }
+        }
+    }
+    
+    # API endpoint
+    url = f"{jira_settings.jira_url.rstrip('/')}/rest/api/3/issue"
+    
+    try:
+        # Make the API call
+        response = requests.post(url, headers=headers, data=json.dumps(issue_data))
+        
+        if response.status_code == 201:
+            # Success - return the ticket URL
+            response_data = response.json()
+            ticket_key = response_data.get('key')
+            ticket_url = f"{jira_settings.jira_url.rstrip('/')}/browse/{ticket_key}"
+            return ticket_url
+        else:
+            # Error
+            error_detail = response.json() if response.content else {"error": "Unknown error"}
+            raise Exception(f"Failed to create Jira ticket: {response.status_code} - {error_detail}")
+    
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"Failed to connect to Jira: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

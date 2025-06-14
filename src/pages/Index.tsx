@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Youtube, MessageSquare, Hash } from 'lucide-react';
+import { Youtube, MessageSquare, Hash, Ticket } from 'lucide-react';
 import YouTubeSummarizer from '@/components/YouTubeSummarizer';
 import SocialMediaGenerator from '@/components/SocialMediaGenerator';
 import CommentGenerator from '@/components/CommentGenerator';
+import JiraTicketCreator from '@/components/JiraTicketCreator';
 
 const Index = () => {
   const [activeTools, setActiveTools] = useState<string | null>(null);
@@ -31,6 +32,13 @@ const Index = () => {
       icon: MessageSquare,
       color: 'from-purple-500 to-indigo-500',
     },
+    {
+      id: 'jira',
+      title: 'AI Jira Ticket Creator',
+      description: 'Generate professional Jira tickets and create them directly in your instance',
+      icon: Ticket,
+      color: 'from-green-500 to-emerald-500',
+    },
   ];
 
   if (activeTools) {
@@ -50,6 +58,7 @@ const Index = () => {
           {activeTools === 'youtube' && <YouTubeSummarizer />}
           {activeTools === 'social' && <SocialMediaGenerator />}
           {activeTools === 'comments' && <CommentGenerator />}
+          {activeTools === 'jira' && <JiraTicketCreator />}
         </div>
       </div>
     );
@@ -67,7 +76,7 @@ const Index = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
           {tools.map((tool) => {
             const IconComponent = tool.icon;
             return (
