@@ -1,4 +1,3 @@
-
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +72,14 @@ class JiraCreateRequest(BaseModel):
     ticket_type: str
     priority: str
     jira_settings: JiraSettings
+
+class CommunicationRequest(BaseModel):
+    content_type: str
+    subject: str
+    details: Optional[str] = None
+    tone: str
+    style: str
+    additional_info: Optional[str] = None
 
 @app.get("/")
 def read_root():
@@ -190,6 +197,25 @@ async def create_jira_ticket(request: JiraCreateRequest):
         return {
             "ticket_url": ticket_url,
             "message": "Jira ticket created successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/communication/generate")
+async def generate_communication(request: CommunicationRequest):
+    try:
+        # Generate communication content
+        result = generate_communication_content(
+            request.content_type,
+            request.subject,
+            request.details,
+            request.tone,
+            request.style,
+            request.additional_info
+        )
+        
+        return {
+            "result": result
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -382,6 +408,70 @@ def generate_jira_ticket_content(subject: str, rough_description: str, ticket_ty
             {"role": "user", "content": prompt}
         ],
         max_tokens=1200,
+        temperature=0.7
+    )
+    
+    return response.choices[0].message.content
+
+def generate_communication_content(content_type: str, subject: str, details: Optional[str], tone: str, style: str, additional_info: Optional[str] = None) -> str:
+    """Generate communication content using OpenAI API."""
+    
+    # Create content type specific prompts
+    content_prompts = {
+        "meeting-agenda": "Create a professional meeting agenda",
+        "meeting-description": "Create a comprehensive meeting description",
+        "slack-message": "Create an engaging Slack message"
+    }
+    
+    # Create tone specific guidelines
+    tone_guidelines = {
+        "professional": "using formal business language and structure",
+        "casual": "using friendly, relaxed language",
+        "friendly": "using warm, approachable language",
+        "urgent": "using direct, action-oriented language that conveys importance",
+        "informative": "using clear, educational language that explains well",
+        "collaborative": "using inclusive language that encourages participation"
+    }
+    
+    # Create style specific formatting
+    style_guidelines = {
+        "concise": "Keep it brief and to the point",
+        "detailed": "Provide comprehensive information with thorough explanations",
+        "bullet-points": "Use bullet points and structured formatting",
+        "structured": "Use clear sections and organized formatting",
+        "action-oriented": "Focus on actionable items and next steps"
+    }
+    
+    base_prompt = content_prompts.get(content_type, "Create professional communication content")
+    tone_guide = tone_guidelines.get(tone, "using appropriate professional language")
+    style_guide = style_guidelines.get(style, "with clear formatting")
+    
+    # Build the main prompt
+    prompt = f"{base_prompt} {tone_guide} and {style_guide}.\n\n"
+    prompt += f"Subject/Title: {subject}\n"
+    
+    if details:
+        prompt += f"Context/Details: {details}\n"
+    
+    # Add specific instructions based on content type
+    if content_type == "meeting-agenda":
+        prompt += "\nInclude: Meeting objectives, agenda items with time allocations, attendees/roles, and action items. Format it professionally."
+    elif content_type == "meeting-description":
+        prompt += "\nInclude: Meeting purpose, expected outcomes, key discussion points, and participant expectations."
+    elif content_type == "slack-message":
+        prompt += "\nMake it appropriate for team communication, engaging, and clear. Include relevant emojis if the tone allows."
+    
+    if additional_info:
+        prompt += f"\nAdditional Requirements: {additional_info}"
+    
+    # Call OpenAI API
+    response = openai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are an expert at creating professional business communication content."},
+            {"role": "user", "content": prompt}
+        ],
+        max_tokens=1000,
         temperature=0.7
     )
     
